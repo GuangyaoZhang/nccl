@@ -3,7 +3,7 @@ import os
 import sys
 
 # Order of redops, tys, protos, algos must match src/include/device.h
-all_colls =  ["Broadcast","Reduce","AllGather","ReduceScatter","AllReduce","SendRecv"]
+all_colls =  ["Broadcast","Reduce","AllGather","ReduceScatter","AllReduce","SendRecv", "ScaledAllGather"]
 all_redops = ["Sum","Prod","MinMax","PreMulSum","SumPostDiv"]
 all_tys =    ["i8","u8","i32","u32","i64","u64","f16","f32","f64","bf16"]
 all_protos = ["LL","LL128","SIMPLE"]
@@ -79,7 +79,8 @@ algos_of_coll = {
   "Broadcast":     ["RING"],
   "Reduce":        ["RING"],
   "ReduceScatter": ["RING","COLLNET_DIRECT","NVLS"],
-  "SendRecv":      [None]
+  "SendRecv":      [None],
+  "ScaledAllGather":["RING"]
 }
 
 coll_camel_to_lower = {
@@ -88,7 +89,8 @@ coll_camel_to_lower = {
   "Broadcast":     "broadcast",
   "Reduce":        "reduce",
   "ReduceScatter": "reduce_scatter",
-  "SendRecv":      "sendrecv"
+  "SendRecv":      "sendrecv",
+  "ScaledAllGather":"scaled_all_gather"
 }
 coll_lower_to_camel = {coll_camel_to_lower[x]: x for x in coll_camel_to_lower}
 
@@ -140,7 +142,7 @@ def best_kernel(coll, redop, ty, algo, proto):
     # Modify this logic to control how many kernels are specialized.
     if coll=="Nop": return ("Generic", None, None, None, None)
     if coll=="SendRecv": return ("SendRecv", None, None, None, None)
-    if coll in ("AllGather","Broadcast"): return (coll, None, None, "RING", "LL")
+    if coll in ("AllGather","Broadcast", "ScaledAllGather"): return (coll, None, None, "RING", "LL")
     return (coll, "Sum", ty, ("TREE" if algo=="TREE" else "RING"), "LL")
   # Need to ensure kernel is specialize for a primary function
   kfn = equivalent_primary(*best(coll, redop, ty, algo, proto))
@@ -151,7 +153,7 @@ def best_kernel(coll, redop, ty, algo, proto):
 # Order rows are enumerated must match formula of `ncclDevFuncId()`:
 def enumerate_func_rows():
   yield ("SendRecv", None, None, None, None)
-  for coll in ("AllGather", "Broadcast"):
+  for coll in ("AllGather", "Broadcast", "ScaledAllGather"):
     algos = algos_of_coll[coll]
     for algo in algos:
       for proto in all_protos:

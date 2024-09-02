@@ -37,17 +37,18 @@ typedef enum {
 
 typedef void (*ncclDebugLogger_t)(ncclDebugLogLevel level, unsigned long flags, const char *file, int line, const char *fmt, ...);
 
-#define NCCL_NUM_FUNCTIONS 5 // Send/Recv not included for now
+#define NCCL_NUM_FUNCTIONS 6 // Send/Recv not included for now
 typedef enum {
   ncclFuncBroadcast = 0,
   ncclFuncReduce = 1,
   ncclFuncAllGather = 2,
   ncclFuncReduceScatter = 3,
   ncclFuncAllReduce = 4,
-  ncclFuncSendRecv = 5,
-  ncclFuncSend = 6,
-  ncclFuncRecv = 7,
-  ncclNumFuncs = 8
+  ncclFuncScaledAllGather = 5, 
+  ncclFuncSendRecv = 6,
+  ncclFuncSend = 7,
+  ncclFuncRecv = 8,
+  ncclNumFuncs = 9
 } ncclFunc_t;
 
 #define NCCL_NUM_ALGORITHMS 6 // Tree/Ring/CollNet*

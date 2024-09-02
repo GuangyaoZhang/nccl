@@ -57,7 +57,9 @@ ncclResult_t ncclInitKernelsForDevice(int cudaArch, size_t* maxStackSize) {
 static inline int ncclFuncTrafficPerByte(ncclFunc_t func, int nRanks) {
   switch (func) {
   case ncclFuncAllReduce: return 2;
-  case ncclFuncAllGather: return nRanks;
+  case ncclFuncAllGather: 
+  case ncclFuncScaledAllGather:
+  return nRanks;
   case ncclFuncReduceScatter: return nRanks;
   default: return 1;
   }
@@ -66,10 +68,10 @@ static inline size_t ncclFuncSendCount(ncclFunc_t func, int nRanks, size_t count
   return func == ncclFuncReduceScatter ? nRanks*count : count;
 }
 static inline size_t ncclFuncRecvCount(ncclFunc_t func, int nRanks, size_t count) {
-  return func == ncclFuncAllGather ? nRanks*count : count;
+  return func == ncclFuncAllGather || func == ncclFuncScaledAllGather ? nRanks*count : count;
 }
 static inline size_t ncclFuncMaxSendRecvCount(ncclFunc_t func, int nRanks, size_t count) {
-  return func == ncclFuncAllGather || func == ncclFuncReduceScatter ? nRanks*count : count;
+  return func == ncclFuncAllGather || func == ncclFuncScaledAllGather || func == ncclFuncReduceScatter ? nRanks*count : count;
 }
 
 /*****************************************************************************/
@@ -255,7 +257,7 @@ static ncclResult_t registerIntraNodeBuffers(
     bool regBufUsed = false;
     const void *sendbuff = info->sendbuff;
     void *recvbuff = info->recvbuff;
-    if (info->func == ncclFuncAllGather) sendbuff = NULL;
+    if (info->func == ncclFuncAllGather || info->func == ncclFuncScaledAllGather) sendbuff = NULL;
     if (info->func == ncclFuncReduceScatter) recvbuff = NULL;
     size_t elementSize = ncclTypeSize(info->datatype);
     size_t sendbuffSize = elementSize*ncclFuncSendCount(info->func, comm->nRanks, info->count);
@@ -434,7 +436,7 @@ ncclResult_t ncclPrepareTasks(struct ncclComm* comm, bool* algoNeedConnect, bool
     struct ncclTaskColl* aggBeg = tasksByFnOpTy[fnOpTyIndices[cursor]];
     int collNetSupport = 0;
     NCCLCHECK(getCollNetSupport(comm, aggBeg, &collNetSupport));
-    int nvlsSupport = comm->nvlsSupport && (ncclNvlsSupported(aggBeg->opDev.op, aggBeg->datatype) || aggBeg->func == ncclFuncAllGather);
+    int nvlsSupport = comm->nvlsSupport && (ncclNvlsSupported(aggBeg->opDev.op, aggBeg->datatype) || aggBeg->func == ncclFuncAllGather || aggBeg->func == ncclFuncScaledAllGather);
     // Crudely estimate number of tasks per channel. This is using the wrong number
     // of channels for NVLS algos, but knowing the algo requires having this value,
     // so either be crude our iterate until fixed point, we chose the former.
@@ -1558,6 +1560,7 @@ static ncclResult_t updateCollCostTable(
     if (a == NCCL_ALGO_NVLS && collNetSupport != 1 && comm->nNodes > 1) continue;
     /* now we only support single-node NVLS allgather and reducescatter */
     if (a == NCCL_ALGO_NVLS && (info->func == ncclFuncAllGather || info->func == ncclFuncReduceScatter) && comm->nNodes > 1) continue;
+    if (a != NCCL_ALGO_RING && info->func == ncclFuncScaledAllGather) continue;
     for (int p=0; p<NCCL_NUM_PROTOCOLS; p++) {
       bool backup;
       float time;
@@ -1718,6 +1721,9 @@ static ncclResult_t calcCollChunking(
       info->algorithm == NCCL_ALGO_COLLNET_CHAIN ? ncclPatternCollnetChain :
       info->algorithm == NCCL_ALGO_TREE ? ncclPatternTreeUpDown :
       ncclPatternRingTwice;
+    break;
+  case ncclFuncScaledAllGather:
+    pattern = ncclPatternRing;
     break;
   default:
     WARN("Unknown pattern for collective %d algorithm %d", info->func, info->algorithm);
@@ -2004,7 +2010,7 @@ static ncclResult_t taskAppend(struct ncclComm* comm, struct ncclInfo* info) {
       t->root = info->root;
       t->datatype = info->datatype;
       size_t elementSize = ncclTypeSize(t->datatype);
-      if (t->func == ncclFuncAllGather || t->func == ncclFuncBroadcast) {
+      if (t->func == ncclFuncAllGather || t->func == ncclFuncScaledAllGather ||t->func == ncclFuncBroadcast) {
         t->count *= elementSize;
         t->datatype = ncclInt8;
         elementSize = 1;

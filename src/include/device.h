@@ -556,6 +556,14 @@ inline int ncclDevFuncId(int coll, int devRedOp, int type, int algo, int proto) 
     }
     row += nAlgos*NCCL_NUM_PROTOCOLS;
 
+    nAlgos = 1;
+    if (coll == ncclFuncScaledAllGather) {
+      row += proto;
+      break;
+    }
+    row += nAlgos*NCCL_NUM_PROTOCOLS;
+
+
     nAlgos = NCCL_NUM_ALGORITHMS;
     if (coll == ncclFuncAllReduce) {
       row += ((devRedOp*NumTypes + type)*nAlgos + algo)*NCCL_NUM_PROTOCOLS + proto;
